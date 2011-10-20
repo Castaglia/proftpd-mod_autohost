@@ -1,0 +1,279 @@
+<!-- $Id: mod_autohost.html,v 1.5 2009/03/03 19:00:07 tj Exp tj $ -->
+<!-- $Source: /home/tj/proftpd/modules/doc/RCS/mod_autohost.html,v $ -->
+
+<html>
+<head>
+<title>ProFTPD module mod_autohost</title>
+</head>
+
+<body bgcolor=white>
+
+<hr>
+<center>
+<h2><b>ProFTPD module <code>mod_autohost</code></b></h2>
+</center>
+<hr><br>
+
+<p>
+For sites that run a large number of <code>&lt;VirtualHost&gt;</code>s for
+<code>proftpd</code>, it can be cumbersome to configure them all in
+the <code>proftpd.conf</code> file.  Adding or removing virtual server
+configurations require restarting the daemon, as do changes to one of the
+server configurations.  The daemon also consumes memory for each server
+configuration, and the memory footprint for the daemon process can grow
+large for large numbers of servers.
+
+<p>
+The <code>mod_autohost</code> module allows for server configurations to
+be configured in individual files, and for those configuration to be used
+in an "on demand" fashion.  Rather than loading the configurations into
+memory when the daemon starts up, the daemon will check the IP address and
+port being contacted by a connecting client, check in the filesystem for
+a <code>mod_autohost</code> configuration file for that address/port,
+dynamically parse the configuration, and insert the configuration into
+the session's process space.  Thus changes to the configuration are
+seen whenever a client connects, without requiring a daemon restart.
+The memory footprint is reduced because <code>proftpd</code>, via
+<code>mod_autohost</code>, only reads and uses the needed configuration.
+
+<p>
+This module is contained in the <code>mod_autohost</code> file for
+ProFTPD 1.3.<i>x</i>, and is not compiled by default.  Installation
+instructions are discussed <a href="#Installation">here</a>.
+
+<p>
+The most current version of <code>mod_autohost</code> can be found at:
+<pre>
+  <a href="http://www.castaglia.org/proftpd/">http://www.castaglia.org/proftpd/</a>
+</pre>
+
+<h2>Author</h2>
+<p>
+Please contact TJ Saunders &lt;tj <i>at</i> castaglia.org&gt; with any
+questions, concerns, or suggestions regarding this module.
+
+<h2>Directives</h2>
+<ul>
+  <li><a href="#AutoHostConfig">AutoHostConfig</a>
+  <li><a href="#AutoHostEngine">AutoHostEngine</a>
+  <li><a href="#AutoHostLog">AutoHostLog</a>
+  <li><a href="#AutoHostPorts">AutoHostPorts</a>
+</ul>
+
+<hr>
+<h2><a name="AutoHostConfig">AutoHostConfig</a></h2>
+<strong>Syntax:</strong> AutoHostConfig <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> &quot;server config&quot;<br>
+<strong>Module:</strong> mod_autohost<br>
+<strong>Compatibility:</strong> 1.3.0rc1 and later
+
+<p>
+The <code>AutoHostConfig</code> directive specifies the path that
+<code>mod_autohost</code> checks for, when handling incoming connections.
+The given <em>path</em> must be an absolute path, and may contain the
+following variables, which will be interpolated:
+<ul>
+  <li><dt>%0</dt>
+      <dd>the entire IP address</dd>
+
+  <li><dt>%1</dt>
+      <dd>the first octet of an IPv4 address</dd>
+
+  <li><dt>%2</dt>
+      <dd>the second octet of an IPv4 address</dd>
+
+  <li><dt>%3</dt>
+      <dd>the third octet of an IPv4 address</dd>
+
+  <li><dt>%4</dt>
+      <dd>the fourth octet of an IPv4 address</dd>
+
+  <li><dt>%p</dt>
+      <dd>the port number</dd>
+</ul>
+<b>Note</b>: This directive is <b>required</b> for <code>mod_autohost</code>
+to function.
+
+<p>
+<b>Examples</b><br>
+With an <code>AutoHostConfig</code> of:
+<pre>
+  /etc/ftpd/vhosts/%0/autohost.conf
+</pre>
+and a client connecting to 1.2.3.4, the above <em>path</em> would expand into:
+<pre>
+  /etc/ftpd/vhosts/1.2.3.4/autohost.conf
+</pre>
+
+Given a <em>path</em> of:
+<pre>
+  /etc/ftpd/vhosts/%1/%2/%3/%4/%p/vhost.conf
+</pre>
+and a client connecting to 1.2.3.4, port 2121, <code>mod_autohost</code>
+would check for the following file:
+<pre>
+  /etc/ftpd/vhosts/1/2/3/4/2121/vhost.conf
+</pre>
+
+<p>
+<hr>
+<h2><a name="AutoHostEngine">AutoHostEngine</a></h2>
+<strong>Syntax:</strong> AutoHostEngine <em>on|off</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> &quot;server config&quot;<br>
+<strong>Module:</strong> mod_autohost<br>
+<strong>Compatibility:</strong> 1.3.0rc1 and later
+
+<p>
+The <code>AutoHostEngine</code> directive enables or disables the module's
+runtime checks for dynamic server configuration files.  If it is set to
+<em>off</em> this module does no checking. Use this directive to disable the
+module instead of commenting out all <code>mod_autohost</code> directives.
+
+<p>
+<hr>
+<h2><a name="AutoHostLog">AutoHostLog</a></h2>
+<strong>Syntax:</strong> AutoHostLog <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> &quot;server config&quot;<br>
+<strong>Module:</strong> mod_autohost<br>
+<strong>Compatibility:</strong> 1.3.0rc1 and later
+
+<p>
+The <code>AutoHostLog</code> directive is used to a specify a log file for
+<code>mod_autohost</code> reporting and debugging.  The <em>path</em>
+parameter must be the full path to the file to use for logging.  Note that
+this path must <b>not</b> be to a world-writeable directory and, unless
+<code>AllowLogSymlinks</code> is explicitly set to <em>on</em> (generally a
+bad idea), the path must <b>not</b> be a symbolic link.
+
+<p>
+<hr>
+<h2><a name="AutoHostPorts">AutoHostPorts</a></h2>
+<strong>Syntax:</strong> AutoHostPorts <em>port1 ... portN</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> &quot;server config&quot;<br>
+<strong>Module:</strong> mod_autohost<br>
+<strong>Compatibility:</strong> 1.3.2rc1 and later
+
+<p>
+The <code>AutoHostPorts</code> directive is used to specify a list of
+port numbers on which <code>proftpd</code> should listen.  By default,
+<code>proftpd</code> listens on a <i>wildcard</i> socket, which means
+that a single socket can be used to listen for all address <i>for a given
+port</i>.  But there is no such thing as a socket which can listen on
+<i>all ports</i>.  Thus <code>mod_autohost</code> needs to know when to
+listen on other ports.
+
+<p>
+<b>Note</b> that the <code>AutoHostPorts</code> directive is only needed
+<i>if</i> your <code>AutoHostConfig</code> path uses the "%p" variable
+(<i>i.e.</i> uses the port number to which the client connected as part
+of the path to the matching configuration).
+
+<p>
+For example, if your <code>AutoHostConfig</code> path included configurations
+for servers on non-standard ports, you would need to use the
+<code>AutoHostPorts</code> directive to list those ports, so that
+<code>proftpd</code> could handles connections to them:
+<pre>
+  &lt;IfModule mod_autohost.c&gt;
+    AutoHostEngine on
+    AutoHostLog /etc/ftpd/var/autohost.log
+
+    # This is required for mod_autohost to work
+    AutoHostConfig /etc/ftpd/vhosts/%0/%p/autoconf.conf
+
+    # Define the other non-standard ports for which we have config files
+    AutoHostPorts 2121 2222 4444
+  &lt;/IfModule&gt;
+</pre>
+
+<p>
+<hr>
+<h2><a name="Installation">Installation</a></h2>
+To install <code>mod_autohost</code>, copy the <code>mod_autohost.c</code>
+file into:
+<pre>
+  <i>proftpd-dir</i>/contrib/
+</pre>
+after unpacking the latest proftpd-1.3 source code.  For including
+<code>mod_autohost</code> as a staticly linked module:
+<pre>
+  ./configure --with-modules=mod_autohost
+</pre>
+Alternatively, <code>mod_autohost</code> could be built as a DSO module:
+<pre>
+  ./configure --enable-dso --with-shared=mod_autohost
+</pre>
+Then follow the usual steps:
+<pre>
+  make
+  make install
+</pre>
+
+<p>
+<hr>
+<h2><a name="Usage">Usage</a></h2>
+<p>
+Example configuration:
+<pre>
+  &lt;IfModule mod_autohost.c&gt;
+    AutoHostEngine on
+    AutoHostLog /etc/ftpd/var/autohost.log
+
+    # This is required for mod_autohost to work
+    AutoHostConfig /etc/ftpd/vhosts/%0/autoconf.conf
+  &lt;/IfModule&gt;
+</pre>
+With this configuration, a client connecting to 1.2.3.4 would cause
+<code>mod_autohost</code> to look for the following path:
+<pre>
+  /etc/ftpd/vhosts/1.2.3.4/autohost.conf
+</pre>
+If the file is not present, <code>proftpd</code> handles the connection
+as it normally would.
+
+<p>
+<b>Caveats</b><br>
+The <code>SocketBindTight</code> directive <b>cannot</b> be &quot;on&quot;
+if <code>mod_autohost</code> is to work directly.  With
+<code>SocketBindTight</code> being off by default, <code>proftpd</code>
+listens for incoming connections on a <i>wildcard</i> socket, which will
+receive connections to all IP addresses on that port.
+<code>mod_autohost</code> relies on this behavior.  If
+<code>SocketBindTight</code> is set to on, then <code>proftpd</code> will
+listen <i>only</i> to the addresses of the servers configured in
+<code>proftpd.conf</code>, and any <code>autohost.conf</code> files will
+be useless.
+
+<p>
+The <code>DefaultServer</code> directive will have no effect if it appears
+in an <code>autohost.conf</code> file.
+
+<p>
+The <code>mod_tls</code> module will not be able to properly prompt for
+passphrases for keys in an <code>autohost.conf</code> file on server startup.
+
+<p>
+IPv6 addresses are not currently handled by <code>mod_autohost</code>.
+
+<p>
+<hr><br>
+
+Author: <i>$Author: tj $</i><br>
+Last Updated: <i>$Date: 2009/03/03 19:00:07 $</i><br>
+
+<br><hr>
+
+<font size=2><b><i>
+&copy; Copyright 2004-2009 TJ Saunders<br>
+ All Rights Reserved<br>
+</i></b></font>
+
+<hr><br>
+
+</body>
+</html>
+
