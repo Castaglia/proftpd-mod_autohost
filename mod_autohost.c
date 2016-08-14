@@ -1,7 +1,6 @@
 /*
  * ProFTPD: mod_autohost -- a module for mass virtual hosting
- *
- * Copyright (c) 2004-2011 TJ Saunders
+ * Copyright (c) 2004-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,14 +23,12 @@
  *
  * This is mod_autohost, contrib software for proftpd 1.3.x and above.
  * For more information contact TJ Saunders <tj@castaglia.org>.
- *
- * $Id: mod_autohost.c,v 1.4 2011/03/01 21:29:09 tj Exp tj $
  */
 
 #include "conf.h"
 #include "privs.h"
 
-#define MOD_AUTOHOST_VERSION		"mod_autohost/0.4"
+#define MOD_AUTOHOST_VERSION		"mod_autohost/0.5"
 
 #if PROFTPD_VERSION_NUMBER < 0x0001030401
 # error "ProFTPD 1.3.4rc1 or later required"
@@ -40,67 +37,71 @@
 module autohost_module;
 
 static const char *autohost_config = NULL;
-static unsigned int autohost_engine = FALSE;
+static int autohost_engine = FALSE;
 static int autohost_logfd = -1;
 static pool *autohost_pool = NULL;
 static xaset_t *autohost_server_list = NULL;
 
-/* XXX Note: this function makes crass assumptions about IPv4 connections;
- * we are soon going to need to properly support IPv6 addresses/connections.
- */
+static const char *trace_channel = "autohost";
+
 static char *autohost_get_config(conn_t *conn) {
   char *ipstr, *portstr, *path = (char *) autohost_config;
-  char *oct1str, *oct2str, *oct3str, *oct4str;
-  char *start, *end;
+  int family;
 
+  family = pr_netaddr_get_family(conn->local_addr);
   ipstr = (char *) pr_netaddr_get_ipstr(conn->local_addr);
 
-  start = ipstr;
-  end = strchr(start, '.');
-  *end = '\0';
-  oct1str = pstrdup(autohost_pool, start);
+  if (family == AF_INET) {
+    char *oct1str, *oct2str, *oct3str, *oct4str;
+    char *start, *end;
 
-  start = end + 1;
-  *end = '.';
-  end = strchr(start, '.');
-  *end = '\0';
-  oct2str = pstrdup(autohost_pool, start);
+    start = ipstr;
+    end = strchr(start, '.');
+    *end = '\0';
+    oct1str = pstrdup(autohost_pool, start);
 
-  start = end + 1;
-  *end = '.';
-  end = strchr(start, '.');
-  *end = '\0';
-  oct3str = pstrdup(autohost_pool, start);
+    start = end + 1;
+    *end = '.';
+    end = strchr(start, '.');
+    *end = '\0';
+    oct2str = pstrdup(autohost_pool, start);
 
-  start = end + 1;
-  *end = '.';
-  oct4str = pstrdup(autohost_pool, start);
+    start = end + 1;
+    *end = '.';
+    end = strchr(start, '.');
+    *end = '\0';
+    oct3str = pstrdup(autohost_pool, start);
+
+    start = end + 1;
+    *end = '.';
+    oct4str = pstrdup(autohost_pool, start);
+
+    if (strstr(path, "%1") != NULL) {
+      path = (char *) sreplace(autohost_pool, path, "%1", oct1str, NULL);
+    }
+
+    if (strstr(path, "%2") != NULL) {
+      path = (char *) sreplace(autohost_pool, path, "%2", oct2str, NULL);
+    }
+
+    if (strstr(path, "%3") != NULL) {
+      path = (char *) sreplace(autohost_pool, path, "%3", oct3str, NULL);
+    }
+
+    if (strstr(path, "%4") != NULL) {
+      path = (char *) sreplace(autohost_pool, path, "%4", oct4str, NULL);
+    }
+  }
 
   portstr = pcalloc(autohost_pool, 10);
   snprintf(portstr, 10, "%u", conn->local_port);
 
   if (strstr(path, "%0") != NULL) {
-    path = sreplace(autohost_pool, path, "%0", ipstr, NULL);
-  }
-
-  if (strstr(path, "%1") != NULL) {
-    path = sreplace(autohost_pool, path, "%1", oct1str, NULL);
-  }
-
-  if (strstr(path, "%2") != NULL) {
-    path = sreplace(autohost_pool, path, "%2", oct2str, NULL);
-  }
-
-  if (strstr(path, "%3") != NULL) {
-    path = sreplace(autohost_pool, path, "%3", oct3str, NULL);
-  }
-
-  if (strstr(path, "%4") != NULL) {
-    path = sreplace(autohost_pool, path, "%4", oct4str, NULL);
+    path = (char *) sreplace(autohost_pool, path, "%0", ipstr, NULL);
   }
 
   if (strstr(path, "%p") != NULL) {
-    path = sreplace(autohost_pool, path, "%p", portstr, NULL);
+    path = (char *) sreplace(autohost_pool, path, "%p", portstr, NULL);
   }
 
   return path;
@@ -263,17 +264,9 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
   struct stat st;
   conn_t *conn = (conn_t *) event_data;
  
-  if (!autohost_engine)
-    return;
-
-#ifdef PR_USE_IPV6
-  /* NOTE: we currently do not handle IPv6 address. */
-  if (pr_netaddr_get_family(conn->local_addr) == AF_INET6) {
-    pr_log_debug(DEBUG0, MOD_AUTOHOST_VERSION
-      ": unable to handle IPv6 addresses");
+  if (autohost_engine == FALSE) {
     return;
   }
-#endif /* PR_USE_IPV6 */
 
   /* Autohost config files, if found, will take precedence over a matching
    * server config found in the main config file.
@@ -292,6 +285,7 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
    */
 
   path = autohost_get_config(conn);  
+  pr_trace_msg(trace_channel, 4, "using AutoHostConfig path '%s'", path);
 
   if (pr_fsio_stat(path, &st) < 0) {
     (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
@@ -324,12 +318,13 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
   config_rec *c;
 
   c = find_config(main_server->conf, CONF_PARAM, "AutoHostEngine", FALSE);
-  if (c) {
-    autohost_engine = *((unsigned int *) c->argv[0]);
+  if (c != NULL) {
+    autohost_engine = *((int *) c->argv[0]);
   }
 
-  if (!autohost_engine)
+  if (autohost_engine == FALSE) {
     return;
+  }
 
   autohost_pool = make_sub_pool(permanent_pool);
   pr_pool_tag(autohost_pool, MOD_AUTOHOST_VERSION);
@@ -338,17 +333,18 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
     NULL);
 
   c = find_config(main_server->conf, CONF_PARAM, "AutoHostConfig", FALSE);
-  if (c) {
+  if (c != NULL) {
     autohost_config = c->argv[0];
 
   } else {
     pr_log_debug(DEBUG0, MOD_AUTOHOST_VERSION
       ": missing required AutoHostConfig");
-    end_login(1);
+    pr_session_disconnect(&autohost_module, PR_SESS_DISCONNECT_BAD_CONFIG,
+      "missing required AutoHostConfig directive");
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "AutoHostLog", FALSE);
-  if (c) {
+  if (c != NULL) {
     int res;
     char *autohost_log;
 
@@ -385,7 +381,7 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
   autohost_server_list = xaset_create(autohost_pool, NULL);
 
   c = find_config(main_server->conf, CONF_PARAM, "AutoHostPorts", FALSE);
-  if (c) {
+  if (c != NULL) {
     register unsigned int i;
     array_header *port_list;
     int *ports;
