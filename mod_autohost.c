@@ -107,7 +107,7 @@ static char *autohost_get_config(conn_t *conn) {
   return path;
 }
 
-static int autohost_parse_config(conn_t *conn, char *path) {
+static int autohost_parse_config(conn_t *conn, const char *path) {
   server_rec *s;
   pr_ipbind_t *binding;
 
@@ -132,8 +132,12 @@ static int autohost_parse_config(conn_t *conn, char *path) {
   pr_parser_cleanup();
 
   if (fixup_servers(autohost_server_list) < 0) {
+    int xerrno = errno;
+
     (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
-      "error fixing up autohost: %s", strerror(errno));
+      "error fixing up autohost: %s", strerror(xerrno));
+
+    errno = xerrno;
     return -1;
   }
 
@@ -147,17 +151,25 @@ static int autohost_parse_config(conn_t *conn, char *path) {
   binding = pr_ipbind_find(conn->local_addr, conn->local_port, TRUE);
   if (binding == NULL) {
     if (pr_ipbind_create(s, conn->local_addr, conn->local_port) < 0) {
+      int xerrno = errno;
+
       (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
-        "error creating binding: %s", strerror(errno));
+        "error creating binding: %s", strerror(xerrno));
+
+      errno = xerrno;
       return -1;
     }
 
     if (pr_ipbind_open(conn->local_addr, conn->local_port, main_server->listen,
         TRUE, TRUE, FALSE) < 0) {
+      int xerrno = errno;
+
       (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
         "error opening binding for %s#%d: %s",
         pr_netaddr_get_ipstr(conn->local_addr), conn->local_port,
-          strerror(errno));
+          strerror(xerrno));
+
+      errno = xerrno;
       return -1;
     }
 
@@ -191,19 +203,20 @@ MODRET set_autohostconfig(cmd_rec *cmd) {
 
 /* usage: AutoHostEngine on|off */
 MODRET set_autohostengine(cmd_rec *cmd) {
-  int bool;
+  int engine;
   config_rec *c;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT);
 
-  bool = get_boolean(cmd, 1);
-  if (bool == -1)
+  engine = get_boolean(cmd, 1);
+  if (engine == -1) {
     CONF_ERROR(cmd, "expected Boolean parameter");
+  }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
-  *((unsigned int *) c->argv[0]) = bool;
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = engine;
 
   return PR_HANDLED(cmd);
 }
@@ -260,7 +273,7 @@ MODRET set_autohostports(cmd_rec *cmd) {
  */
 
 static void autohost_connect_ev(const void *event_data, void *user_data) {
-  char *path;
+  const char *path;
   struct stat st;
   conn_t *conn = (conn_t *) event_data;
  
@@ -299,9 +312,8 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
     return;
   }
 
-  (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
-    "found autohost for %s#%u", pr_netaddr_get_ipstr(conn->local_addr),
-    conn->local_port);
+  pr_trace_msg(trace_channel, 9, "found using autohost for %s#%u",
+    pr_netaddr_get_ipstr(conn->local_addr), conn->local_port);
 
   return;
 }
@@ -310,6 +322,11 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
 static void autohost_mod_unload_ev(const void *event_data, void *user_data) {
   if (strcmp("mod_autohost.c", (const char *) event_data) == 0) {
     pr_event_unregister(&autohost_module, NULL, NULL);
+
+    if (autohost_pool != NULL) {
+      destroy_pool(autohost_pool);
+      autohost_pool = NULL;
+    }
   }
 }
 #endif
