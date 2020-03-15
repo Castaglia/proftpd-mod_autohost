@@ -13,8 +13,8 @@
 
 <p>
 For sites that run a large number of <code>&lt;VirtualHost&gt;</code>
-sections for <code>proftpd</code>, it can be cumbersome to configure them all
-in the <code>proftpd.conf</code> file.  Adding or removing virtual server
+sections for ProFTPD, it can be cumbersome to configure them all in the
+<code>proftpd.conf</code> file.  Adding or removing virtual server
 configurations requires <i>restarting</i> the daemon, as do changes to one of
 the server configurations.  The daemon also consumes memory for each server
 configuration, and the memory footprint for the daemon process can grow
@@ -30,8 +30,8 @@ a <code>mod_autohost</code> configuration file for that address/port,
 dynamically parse the configuration, and insert the configuration into
 the session's process space.  Thus changes to the configuration are
 seen whenever a client connects, <i>without requiring a daemon restart</i>.
-The memory footprint is reduced because <code>proftpd</code>, via
-<code>mod_autohost</code>, only reads and uses the needed configuration.
+The memory footprint is reduced because ProFTPD, via <code>mod_autohost</code>,
+only reads and uses the needed configuration.
 
 <p>
 This module is contained in the <code>mod_autohost</code> file for
@@ -95,6 +95,11 @@ following variables, which will be interpolated:
   <li><code>%4</code><br>
     <p>
     The fourth octet of an IPv4 address
+  </li>
+
+  <li><code>%n</code><br>
+    <p>
+    The <em>name</em> used by the client, either via TLS SNI or FTP <code>HOST</code> command
   </li>
 
   <li><code>%p</code><br>
@@ -273,7 +278,7 @@ passphrases for keys in an <code>autohost.conf</code> file on server startup.
 <p>
 <hr>
 <font size=2><b><i>
-&copy; Copyright 2004-2016 TJ Saunders<br>
+&copy; Copyright 2004-2020 TJ Saunders<br>
  All Rights Reserved<br>
 </i></b></font>
 <hr>
