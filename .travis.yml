@@ -8,8 +8,10 @@ compiler:
 install:
   # for unit tests
   - sudo apt-get install -y check
+  - sudo apt-get install -y libsubunit-dev
   # for static code analysis
-  - sudo apt-get install -y cppcheck rats
+  # - sudo apt-get install -y cppcheck
+  # - sudo apt-get install -y rats
   # for test code coverage
   - sudo apt-get install -y lcov
   - gem install coveralls-lcov
@@ -21,11 +23,11 @@ before_script:
 script:
   # - find . -type f -name "*.c" -print | grep -v t\/ | xargs cppcheck 2>&1
   # - find . -type f -name "*.c" -print | grep -v t\/ | xargs rats --language=c
-  - git clone https://github.com/proftpd/proftpd.git
+  - git clone --depth 100 https://github.com/proftpd/proftpd.git
   - cp mod_autohost.c proftpd/contrib/
-  - cd proftpd
-  - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_autohost
+  - cd proftpd/
+  - ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_autohost
   - make
   - make clean
-  - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_autohost
+  - ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel=coverage --enable-tests --with-modules=mod_autohost
   - make
