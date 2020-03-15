@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_autohost -- a module for mass virtual hosting
- * Copyright (c) 2004-2016 TJ Saunders
+ * Copyright (c) 2004-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,10 +28,10 @@
 #include "conf.h"
 #include "privs.h"
 
-#define MOD_AUTOHOST_VERSION		"mod_autohost/0.5"
+#define MOD_AUTOHOST_VERSION		"mod_autohost/0.6"
 
-#if PROFTPD_VERSION_NUMBER < 0x0001030401
-# error "ProFTPD 1.3.4rc1 or later required"
+#if PROFTPD_VERSION_NUMBER < 0x0001030604
+# error "ProFTPD 1.3.6 or later required"
 #endif
 
 module autohost_module;
@@ -44,7 +44,7 @@ static xaset_t *autohost_server_list = NULL;
 
 static const char *trace_channel = "autohost";
 
-static char *autohost_get_config(conn_t *conn) {
+static char *autohost_get_config(conn_t *conn, const char *server_name) {
   char *ipstr, *portstr, *path = (char *) autohost_config;
   int family;
 
@@ -100,11 +100,65 @@ static char *autohost_get_config(conn_t *conn) {
     path = (char *) sreplace(autohost_pool, path, "%0", ipstr, NULL);
   }
 
+  if (server_name != NULL) {
+    /* Note: How to handle the case-insensitive name of SNI/HOST, and the
+     * case-sensitive nature of paths.  Should we always downcase the entire
+     * server name, for purposes of config file lookup?
+     */
+    if (strstr(path, "%n") != NULL) {
+      path = (char *) sreplace(autohost_pool, path, "%n", server_name, NULL);
+    }
+  }
+
   if (strstr(path, "%p") != NULL) {
     path = (char *) sreplace(autohost_pool, path, "%p", portstr, NULL);
   }
 
   return path;
+}
+
+/* Largely borrowed/copied from src/bindings.c. */
+static unsigned int process_serveralias(server_rec *s) {
+  unsigned namebind_count = 0;
+  config_rec *c;
+
+  /* If there is no ipbind already for this server, we cannot associate
+   * any ServerAlias-based namebinds to it.
+   */
+  if (pr_ipbind_get_server(s->addr, s->ServerPort) == NULL) {
+    return 0;
+  }
+
+  c = find_config(s->conf, CONF_PARAM, "ServerAlias", FALSE);
+  while (c != NULL) {
+    int res;
+
+    pr_signals_handle();
+
+    res = pr_namebind_create(s, c->argv[0], s->addr, s->ServerPort);
+    if (res == 0) {
+      namebind_count++;
+
+      res = pr_namebind_open(c->argv[0], s->addr, s->ServerPort);
+      if (res < 0) {
+        pr_trace_msg(trace_channel, 2,
+          "notice: unable to open namebind '%s': %s", (char *) c->argv[0],
+          strerror(errno));
+      }
+
+    } else {
+      if (errno != ENOENT) {
+        pr_trace_msg(trace_channel, 3,
+          "unable to create namebind for '%s' to %s#%u: %s",
+          (char *) c->argv[0], pr_netaddr_get_ipstr(s->addr), s->ServerPort,
+          strerror(errno));
+      }
+    }
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ServerAlias", FALSE);
+  }
+
+  return namebind_count;
 }
 
 static int autohost_parse_config(conn_t *conn, const char *path) {
@@ -147,38 +201,39 @@ static int autohost_parse_config(conn_t *conn, const char *path) {
   /* Now that we have a valid server_rec, we need to bind it to
    * the address to which the client connected.
    */
+  process_serveralias(s);
 
   binding = pr_ipbind_find(conn->local_addr, conn->local_port, TRUE);
-  if (binding == NULL) {
-    if (pr_ipbind_create(s, conn->local_addr, conn->local_port) < 0) {
-      int xerrno = errno;
-
-      (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
-        "error creating binding: %s", strerror(xerrno));
-
-      errno = xerrno;
-      return -1;
-    }
-
-    if (pr_ipbind_open(conn->local_addr, conn->local_port, main_server->listen,
-        TRUE, TRUE, FALSE) < 0) {
-      int xerrno = errno;
-
-      (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
-        "error opening binding for %s#%d: %s",
-        pr_netaddr_get_ipstr(conn->local_addr), conn->local_port,
-          strerror(xerrno));
-
-      errno = xerrno;
-      return -1;
-    }
-
-  } else {
-
+  if (binding != NULL) {
     /* If we already have a binding in place, we need to replace the
      * server_rec to which that binding points with our new server_rec.
      */
     binding->ib_server = s;
+
+    return 0;
+  }
+
+  if (pr_ipbind_create(s, conn->local_addr, conn->local_port) < 0) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
+      "error creating binding: %s", strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (pr_ipbind_open(conn->local_addr, conn->local_port, main_server->listen,
+      TRUE, TRUE, FALSE) < 0) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
+      "error opening binding for %s#%d: %s",
+      pr_netaddr_get_ipstr(conn->local_addr), conn->local_port,
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
   }
 
   return 0;
@@ -269,7 +324,42 @@ MODRET set_autohostports(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* Event handlers
+/* Command handlers
+ */
+
+MODRET autohost_pre_host(cmd_rec *cmd) {
+  const char *path, *server_name;
+  struct stat st;
+
+  if (autohost_engine == FALSE) {
+    return PR_DECLINED(cmd);
+  }
+
+  server_name = (const char *) cmd->argv[1];
+  path = autohost_get_config(session.c, server_name);
+  pr_trace_msg(trace_channel, 4, "using AutoHostConfig path '%s' for '%s %s'",
+    path, (const char *) cmd->argv[0], server_name);
+
+  if (pr_fsio_stat(path, &st) < 0) {
+    (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
+      "error checking for '%s': %s", path, strerror(errno));
+    return PR_DECLINED(cmd);
+  }
+
+  if (autohost_parse_config(session.c, path) < 0) {
+    (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
+      "error parsing '%s': %s", path, strerror(errno));
+    return PR_DECLINED(cmd);
+  }
+
+  pr_trace_msg(trace_channel, 9, "'%s %s' found using autohost for %s#%u",
+    (const char *) cmd->argv[0], server_name,
+    pr_netaddr_get_ipstr(session.c->local_addr), session.c->local_port);
+
+  return PR_DECLINED(cmd);
+}
+
+/* Event listeners
  */
 
 static void autohost_connect_ev(const void *event_data, void *user_data) {
@@ -297,12 +387,26 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
    * It is allocated after the fork().
    */
 
-  path = autohost_get_config(conn);  
+  path = autohost_get_config(conn, NULL);
   pr_trace_msg(trace_channel, 4, "using AutoHostConfig path '%s'", path);
 
   if (pr_fsio_stat(path, &st) < 0) {
-    (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
-      "error checking for '%s': %s", path, strerror(errno));
+    int xerrno = errno;
+
+    /* If the given path contains '%n', and the path is not found, do not log
+     * the error.  The file in question may be intended for name-based vhosts,
+     * which can only be resolved at SNI/HOST time, not at TCP connect time.
+     */
+    if (xerrno == ENOENT &&
+        strstr(path, "%n") != NULL) {
+      pr_trace_msg(trace_channel, 19,
+        "ignoring connect-time check of name-based config file '%s'", path);
+
+    } else {
+      (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
+        "error checking for '%s': %s", path, strerror(xerrno));
+    }
+
     return;
   }
 
@@ -320,16 +424,50 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
 
 #if defined(PR_SHARED_MODULE)
 static void autohost_mod_unload_ev(const void *event_data, void *user_data) {
-  if (strcmp("mod_autohost.c", (const char *) event_data) == 0) {
-    pr_event_unregister(&autohost_module, NULL, NULL);
+  if (strcmp("mod_autohost.c", (const char *) event_data) != 0) {
+    return;
+  }
 
-    if (autohost_pool != NULL) {
-      destroy_pool(autohost_pool);
-      autohost_pool = NULL;
-    }
+  pr_event_unregister(&autohost_module, NULL, NULL);
+
+  if (autohost_pool != NULL) {
+    destroy_pool(autohost_pool);
+    autohost_pool = NULL;
   }
 }
-#endif
+#endif /* PR_SHARED_MODULE */
+
+static void autohost_sni_ev(const void *event_data, void *user_data) {
+  const char *path, *server_name;
+  struct stat st;
+
+  if (autohost_engine == FALSE) {
+    return;
+  }
+
+  server_name = (const char *) event_data;
+  path = autohost_get_config(session.c, server_name);
+  pr_trace_msg(trace_channel, 4,
+    "using AutoHostConfig path '%s' for TLS SNI '%s'", path, server_name);
+
+  if (pr_fsio_stat(path, &st) < 0) {
+    (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
+      "error checking for '%s': %s", path, strerror(errno));
+    return;
+  }
+
+  if (autohost_parse_config(session.c, path) < 0) {
+    (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
+      "error parsing '%s': %s", path, strerror(errno));
+    return;
+  }
+
+  pr_trace_msg(trace_channel, 9, "TLS SNI '%s' found using autohost for %s#%u",
+    server_name, pr_netaddr_get_ipstr(session.c->local_addr),
+    session.c->local_port);
+
+  return;
+}
 
 static void autohost_postparse_ev(const void *event_data, void *user_data) {
   config_rec *c;
@@ -348,6 +486,7 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
 
   pr_event_register(&autohost_module, "core.connect", autohost_connect_ev,
     NULL);
+  pr_event_register(&autohost_module, "mod_tls.sni", autohost_sni_ev, NULL);
 
   c = find_config(main_server->conf, CONF_PARAM, "AutoHostConfig", FALSE);
   if (c != NULL) {
@@ -481,6 +620,13 @@ static conftable autohost_conftab[] = {
   { NULL }
 };
 
+static cmdtable autohost_cmdtab[] = {
+#if defined(C_HOST)
+  { PRE_CMD,	C_HOST,	G_NONE,	autohost_pre_host,	FALSE,	FALSE },
+#endif /* FTP HOST support */
+  { 0, NULL }
+};
+
 module autohost_module = {
   NULL, NULL,
 
@@ -494,7 +640,7 @@ module autohost_module = {
   autohost_conftab,
 
   /* Module command handler table */
-  NULL,
+  autohost_cmdtab,
 
   /* Module authentication handler table */
   NULL,
