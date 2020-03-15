@@ -28,7 +28,7 @@
 #include "conf.h"
 #include "privs.h"
 
-#define MOD_AUTOHOST_VERSION		"mod_autohost/0.6"
+#define MOD_AUTOHOST_VERSION		"mod_autohost/0.7"
 
 #if PROFTPD_VERSION_NUMBER < 0x0001030604
 # error "ProFTPD 1.3.6 or later required"
