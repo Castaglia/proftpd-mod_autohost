@@ -339,48 +339,16 @@ EOC
 sub autohost_ports {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/autohost.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/autohost.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/autohost.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/autohost.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/autohost.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs("$tmpdir/home");
-  mkpath($home_dir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'autohost');
 
   my $test_root = File::Spec->rel2abs($tmpdir);
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'DEFAULT:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 binding:20 autohost:20',
 
     IfModules => {
       'mod_delay.c' => {
@@ -389,34 +357,36 @@ sub autohost_ports {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  my $autohost_port = $port + 21;
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <IfModule mod_autohost.c>
   AutoHostEngine on
-  AutoHostLog $log_file
+  AutoHostLog $setup->{log_file}
   AutoHostConfig $test_root/conf.d/%0:%p.conf
-  AutoHostPorts $port
+  AutoHostPorts $autohost_port
 </IfModule>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   mkpath("$tmpdir/conf.d");
-  my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1:$port.conf");
+  my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1:$autohost_port.conf");
   if (open(my $fh, "> $auto_config")) {
     print $fh <<EOC;
 ServerName "AutoHost Server"
-AuthUserFile $auth_user_file
-AuthGroupFile $auth_group_file
-ServerLog $log_file
+AuthUserFile $setup->{auth_user_file}
+AuthGroupFile $setup->{auth_group_file}
 RequireValidShell off
+ServerLog $setup->{log_file}
 EOC
     unless (close($fh)) {
       die("Can't write $auto_config: $!");
@@ -441,12 +411,10 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-
-      $client->login($user, $passwd);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $autohost_port);
+      $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -455,7 +423,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -465,15 +433,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub autohost_extlog_var_p {
@@ -489,7 +452,7 @@ sub autohost_extlog_var_p {
     ScoreboardFile => $setup->{scoreboard_file},
     SystemLog => $setup->{log_file},
     TraceLog => $setup->{log_file},
-    Trace => 'DEFAULT:10',
+    Trace => 'DEFAULT:10 autohost:20',
 
     LogFormat => 'custom "%p"',
 
@@ -503,13 +466,15 @@ sub autohost_extlog_var_p {
   my ($port, $config_user, $config_group) = config_write($setup->{config_file},
     $config);
 
+  my $autohost_port = $port + 11;
+
   if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <IfModule mod_autohost.c>
   AutoHostEngine on
   AutoHostLog $setup->{log_file}
   AutoHostConfig $test_root/conf.d/%0:%p.conf
-  AutoHostPorts $port
+  AutoHostPorts $autohost_port
 </IfModule>
 EOC
     unless (close($fh)) {
@@ -521,7 +486,7 @@ EOC
   }
 
   mkpath("$tmpdir/conf.d");
-  my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1:$port.conf");
+  my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1:$autohost_port.conf");
   if (open(my $fh, "> $auto_config")) {
     print $fh <<EOC;
 ServerName "AutoHost Server"
@@ -554,7 +519,7 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $autohost_port);
       $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
@@ -596,8 +561,8 @@ EOC
         print STDERR "# $line\n";
       }
 
-      $self->assert($port eq $line,
-        test_msg("Expected '$port', got '$line'"));
+      $self->assert($autohost_port eq $line,
+        test_msg("Expected '$autohost_port', got '$line'"));
 
     } else {
       die("Can't read $ext_log: $!");
@@ -613,49 +578,17 @@ EOC
 sub autohost_global_config {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/autohost.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/autohost.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/autohost.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/autohost.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/autohost.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs("$tmpdir/home");
-  mkpath($home_dir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'autohost');
 
   my $test_root = File::Spec->rel2abs($tmpdir);
   my $ext_log = File::Spec->rel2abs("$tmpdir/custom.log");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'DEFAULT:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 autohost:20',
 
     LogFormat => 'custom "%p"',
 
@@ -670,33 +603,36 @@ sub autohost_global_config {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  my $autohost_port = $port + 7;
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <IfModule mod_autohost.c>
   AutoHostEngine on
-  AutoHostLog $log_file
+  AutoHostLog $setup->{log_file}
   AutoHostConfig $test_root/conf.d/%0:%p.conf
-  AutoHostPorts $port
+  AutoHostPorts $autohost_port
 </IfModule>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   mkpath("$tmpdir/conf.d");
-  my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1:$port.conf");
+  my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1:$autohost_port.conf");
   if (open(my $fh, "> $auto_config")) {
     print $fh <<EOC;
 ServerName "AutoHost Server"
-AuthUserFile $auth_user_file
-AuthGroupFile $auth_group_file
-ServerLog $log_file
+AuthUserFile $setup->{auth_user_file}
+AuthGroupFile $setup->{auth_group_file}
+ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
     unless (close($fh)) {
@@ -722,11 +658,10 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login($user, $passwd);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $autohost_port);
+      $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -735,7 +670,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -745,29 +680,38 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    die($ex);
+    test_cleanup($setup->{log_file}, $ex);
+    return;
   }
 
-  # Now, read in the ExtendedLog, and see whether the %p variable was
-  # properly written out.
-  if (open(my $fh, "< $ext_log")) {
-    my $line = <$fh>;
-    chomp($line);
-    close($fh);
+  eval {
+    # Now, read in the ExtendedLog, and see whether the %p variable was
+    # properly written out.
+    if (open(my $fh, "< $ext_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
 
-    $self->assert($port eq $line,
-      test_msg("Expected '$port', got '$line'"));
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# $line\n";
+      }
 
-  } else {
-    die("Can't read $ext_log: $!");
+      $self->assert($autohost_port eq $line,
+        test_msg("Expected '$autohost_port', got '$line'"));
+
+    } else {
+      die("Can't read $ext_log: $!");
+    }
+  };
+  if ($@) {
+    $ex;
   }
 
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 1;

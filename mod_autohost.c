@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_autohost -- a module for mass virtual hosting
- * Copyright (c) 2004-2020 TJ Saunders
+ * Copyright (c) 2004-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -118,13 +118,20 @@ static char *autohost_get_config(conn_t *conn, const char *server_name) {
 }
 
 /* Largely borrowed/copied from src/bindings.c. */
-static unsigned int process_serveralias(server_rec *s) {
+static unsigned int process_serveralias(server_rec *s, pr_ipbind_t *ipbind) {
   unsigned namebind_count = 0;
   config_rec *c;
 
   /* If there is no ipbind already for this server, we cannot associate
    * any ServerAlias-based namebinds to it.
+   *
+   * Keep in mind that there may be multiple ipbinds pointed at this server:
+   *
+   *  <VirtualHost 1.2.3.4 5.6.7.8>
+   *    ServerAlias alias
+   *  </VirtualHost>
    */
+
   if (pr_ipbind_get_server(s->addr, s->ServerPort) == NULL) {
     return 0;
   }
@@ -133,9 +140,11 @@ static unsigned int process_serveralias(server_rec *s) {
   while (c != NULL) {
     int res;
 
-    pr_signals_handle();
-
+#if PROFTPD_VERSION_NUMBER < 0x0001030707
     res = pr_namebind_create(s, c->argv[0], s->addr, s->ServerPort);
+#else
+    res = pr_namebind_create(s, c->argv[0], ipbind, s->addr, s->ServerPort);
+#endif /* ProFTPD 1.3.7b and later */
     if (res == 0) {
       namebind_count++;
 
@@ -163,14 +172,13 @@ static unsigned int process_serveralias(server_rec *s) {
 
 static int autohost_parse_config(conn_t *conn, const char *path) {
   server_rec *s;
-  pr_ipbind_t *binding;
+  pr_ipbind_t *ipbind;
 
   /* We use session.pool here, rather than autohost_pool, because
    * we'll be destroying autohost_pool once the server_rec has
    * been created and bound.
    */
   pr_parser_prepare(session.pool, &autohost_server_list);
-
   pr_parser_server_ctxt_open(pr_netaddr_get_ipstr(conn->local_addr));
 
   /* XXX: some things, like Port, <VirtualHost>, etc in the autohost.conf
@@ -182,14 +190,13 @@ static int autohost_parse_config(conn_t *conn, const char *path) {
   }
 
   pr_parser_server_ctxt_close();
-
   pr_parser_cleanup();
 
   if (fixup_servers(autohost_server_list) < 0) {
     int xerrno = errno;
 
     (void) pr_log_writefile(autohost_logfd, MOD_AUTOHOST_VERSION,
-      "error fixing up autohost: %s", strerror(xerrno));
+      "error fixing up autohost config '%s': %s", path, strerror(xerrno));
 
     errno = xerrno;
     return -1;
@@ -198,17 +205,18 @@ static int autohost_parse_config(conn_t *conn, const char *path) {
   s = (server_rec *) autohost_server_list->xas_list;
   s->ServerPort = conn->local_port;
 
+  ipbind = pr_ipbind_find(conn->local_addr, conn->local_port, TRUE);
+
   /* Now that we have a valid server_rec, we need to bind it to
    * the address to which the client connected.
    */
-  process_serveralias(s);
+  process_serveralias(s, ipbind);
 
-  binding = pr_ipbind_find(conn->local_addr, conn->local_port, TRUE);
-  if (binding != NULL) {
+  if (ipbind != NULL) {
     /* If we already have a binding in place, we need to replace the
      * server_rec to which that binding points with our new server_rec.
      */
-    binding->ib_server = s;
+    ipbind->ib_server = s;
 
     return 0;
   }
@@ -418,8 +426,6 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
 
   pr_trace_msg(trace_channel, 9, "found using autohost for %s#%u",
     pr_netaddr_get_ipstr(conn->local_addr), conn->local_port);
-
-  return;
 }
 
 #if defined(PR_SHARED_MODULE)
@@ -465,8 +471,6 @@ static void autohost_sni_ev(const void *event_data, void *user_data) {
   pr_trace_msg(trace_channel, 9, "TLS SNI '%s' found using autohost for %s#%u",
     server_name, pr_netaddr_get_ipstr(session.c->local_addr),
     session.c->local_port);
-
-  return;
 }
 
 static void autohost_postparse_ev(const void *event_data, void *user_data) {
@@ -550,6 +554,11 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
      */
 
     for (i = 0; i < port_list->nelts; i++) {
+      /* If this port duplicates the existing Port, skip it. */
+      if (ports[i] == main_server->ServerPort) {
+        continue;
+      }
+
       if (pr_ipbind_find(main_server->addr, ports[i], TRUE) == NULL) {
         int res;
         conn_t *listener;
@@ -590,8 +599,6 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
       }
     }
   }
-
-  return;
 }
 
 /* Initialization routines
