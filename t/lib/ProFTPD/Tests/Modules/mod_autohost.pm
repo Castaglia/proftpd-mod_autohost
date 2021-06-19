@@ -48,6 +48,10 @@ my $TESTS = {
     test_class => [qw(bug forking)],
   },
 
+  autohost_sighup_issue10 => {
+    order => ++$order,
+    test_class => [qw(bug forking)],
+  },
 };
 
 sub new {
@@ -61,48 +65,16 @@ sub list_tests {
 sub autohost_config {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/autohost.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/autohost.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/autohost.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/autohost.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/autohost.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs("$tmpdir/home");
-  mkpath($home_dir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'autohost');
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1.conf");
   if (open(my $fh, "> $auto_config")) {
     print $fh <<EOC;
 ServerName "AutoHost Server"
-AuthUserFile $auth_user_file
-AuthGroupFile $auth_group_file
-ServerLog $log_file
+AuthUserFile $setup->{auth_user_file}
+AuthGroupFile $setup->{auth_group_file}
+ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
     unless (close($fh)) {
@@ -116,16 +88,16 @@ EOC
   my $test_root = File::Spec->rel2abs($tmpdir);
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'DEFAULT:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 autohost:20',
 
     IfModules => {
       'mod_autohost.c' => {
         AutoHostEngine => 'on',
-        AutoHostLog => $log_file,
+        AutoHostLog => $setup->{log_file},
         AutoHostConfig => "$test_root/conf.d/%0.conf",
       },
 
@@ -135,7 +107,8 @@ EOC
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -153,11 +126,9 @@ EOC
   if ($pid) {
     eval {
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-
-      $client->login($user, $passwd);
+      $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -166,7 +137,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -176,15 +147,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub autohost_config_ipv6 {
@@ -710,6 +676,123 @@ EOC
   if ($@) {
     $ex;
   }
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub autohost_sighup_issue10 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'autohost');
+
+  my $test_root = File::Spec->rel2abs($tmpdir);
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 autohost:20',
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  my $autohost_port = $port + 9;
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<IfModule mod_autohost.c>
+  AutoHostEngine on
+  AutoHostLog $setup->{log_file}
+  AutoHostConfig $test_root/conf.d/%0:%p.conf
+  AutoHostPorts $autohost_port
+</IfModule>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  mkpath("$tmpdir/conf.d");
+  my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1:$autohost_port.conf");
+  if (open(my $fh, "> $auto_config")) {
+    print $fh <<EOC;
+ServerName "AutoHost Server"
+AuthUserFile $setup->{auth_user_file}
+AuthGroupFile $setup->{auth_group_file}
+RequireValidShell off
+ServerLog $setup->{log_file}
+EOC
+    unless (close($fh)) {
+      die("Can't write $auto_config: $!");
+    }
+
+  } else {
+    die("Can't open $auto_config: $!");
+  }
+
+  # Start the server
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "# Starting daemon\n";
+  }
+  server_start($setup->{config_file});
+  sleep(1);
+
+  # Restart the server
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "# Restarting daemon via SIGHUP\n";
+  }
+  server_restart($setup->{pid_file});
+  sleep(1);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $autohost_port);
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
 
   test_cleanup($setup->{log_file}, $ex);
 }
