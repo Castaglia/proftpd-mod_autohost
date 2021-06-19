@@ -485,6 +485,11 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
     return;
   }
 
+  if (autohost_pool != NULL) {
+    destroy_pool(autohost_pool);
+    autohost_server_list = NULL;
+  }
+
   autohost_pool = make_sub_pool(permanent_pool);
   pr_pool_tag(autohost_pool, MOD_AUTOHOST_VERSION);
 
@@ -509,6 +514,9 @@ static void autohost_postparse_ev(const void *event_data, void *user_data) {
     char *autohost_log;
 
     autohost_log = c->argv[0];
+
+    (void) close(autohost_logfd);
+    autohost_logfd = -1;
 
     PRIVS_ROOT
     res = pr_log_openfile(autohost_log, &autohost_logfd, 0660);
