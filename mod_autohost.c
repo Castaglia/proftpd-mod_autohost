@@ -438,8 +438,14 @@ static void autohost_mod_unload_ev(const void *event_data, void *user_data) {
 
   if (autohost_pool != NULL) {
     destroy_pool(autohost_pool);
-    autohost_pool = NULL;
   }
+
+  (void) close(autohost_logfd);
+  autohost_logfd = -1;
+
+  autohost_pool = NULL;
+  autohost_server_list = NULL;
+  autohost_config = NULL;
 }
 #endif /* PR_SHARED_MODULE */
 
