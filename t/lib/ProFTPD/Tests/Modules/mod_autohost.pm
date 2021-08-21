@@ -27,7 +27,7 @@ my $TESTS = {
 
   autohost_config_ipv6 => {
     order => ++$order,
-    test_class => [qw(features_ipv6 forking)],
+    test_class => [qw(feature_ipv6 forking)],
   },
 
   autohost_ports => {
@@ -658,23 +658,16 @@ EOC
     # Now, read in the ExtendedLog, and see whether the %p variable was
     # properly written out.
     if (open(my $fh, "< $ext_log")) {
-      my $line = <$fh>;
-      chomp($line);
       close($fh);
 
-      if ($ENV{TEST_VERBOSE}) {
-        print STDERR "# $line\n";
-      }
-
-      $self->assert($autohost_port eq $line,
-        test_msg("Expected '$autohost_port', got '$line'"));
-
-    } else {
-      die("Can't read $ext_log: $!");
+      # NOTE: Since mod_autohost does not handle <Global> sections, we do NOT
+      # expect to have this <Global> ExtendedLog available.  So if we are
+      # able to open such a file, it's a surprise.
+      die("Found ExtendedLog $ext_log unexpectedly");
     }
   };
   if ($@) {
-    $ex;
+    $ex = $@ if $@ !~ /No such file or directory/;
   }
 
   test_cleanup($setup->{log_file}, $ex);
