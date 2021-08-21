@@ -92,8 +92,8 @@ sub autohost_sni_config_ok {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -182,6 +182,7 @@ EOC
         SSL_ca_file => $ca_file,
         SSL_hostname => $host,
         SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
+        SSL_verifycn_name => 'server-cert',
       };
 
       if ($ENV{TEST_VERBOSE}) {
@@ -234,8 +235,8 @@ sub autohost_sni_config_missing {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-foo.conf");
@@ -324,21 +325,21 @@ EOC
         SSL_ca_file => $ca_file,
         SSL_hostname => $host,
         SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
+        SSL_verifycn_name => 'server-cert',
       };
 
       if ($ENV{TEST_VERBOSE}) {
         $ssl_opts->{Debug} = 2;
       }
 
+      # Although we are specifying an SNI which is not configured, we DO
+      # expect the connection to succeed.  ProFTPD ignores unknown SNI,
+      # so that existing configurations that lack ServerAlias do not break
+      # unexpectedly.
       my $client = Net::FTPSSL->new('127.0.0.1', $ssl_opts);
-      if ($client) {
-        die("Connected to FTPS server unexpectedly");
-      }
-
-      my $errstr = IO::Socket::SSL::errstr();
-      my $expected = 'handshake failure|unrecognized name';
-      $self->assert(qr/$expected/, $errstr,
-        test_msg("Expected '$expected', got '$errstr'"));
+      my $client = Net::FTPSSL->new('127.0.0.1', $ssl_opts);
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->quit();
     };
     if ($@) {
       $ex = $@;
@@ -371,8 +372,8 @@ sub autohost_sni_config_no_serveralias {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -460,21 +461,21 @@ EOC
         SSL_ca_file => $ca_file,
         SSL_hostname => $host,
         SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
+        SSL_verifycn_name => 'server-cert',
       };
 
       if ($ENV{TEST_VERBOSE}) {
         $ssl_opts->{Debug} = 2;
       }
 
+      # Although we are specifying an SNI which is configured, that
+      # configuration does NOT provide a matching ServerAlias. We DO
+      # expect the connection to succeed.  ProFTPD ignores SNI that does
+      # not match, so that existing configurations that lack ServerAlias do
+      # not break unexpectedly.
       my $client = Net::FTPSSL->new('127.0.0.1', $ssl_opts);
-      if ($client) {
-        die("Connected to FTPS server unexpectedly");
-      }
-
-      my $errstr = IO::Socket::SSL::errstr();
-      my $expected = 'handshake failure|unrecognized name';
-      $self->assert(qr/$expected/, $errstr,
-        test_msg("Expected '$expected', got '$errstr'"));
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->quit();
     };
     if ($@) {
       $ex = $@;
@@ -507,8 +508,8 @@ sub autohost_sni_config_mismatched_serveralias {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -597,6 +598,7 @@ EOC
         SSL_ca_file => $ca_file,
         SSL_hostname => $host,
         SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
+        SSL_verifycn_name => 'server-cert',
       };
 
       if ($ENV{TEST_VERBOSE}) {
@@ -644,8 +646,8 @@ sub autohost_sni_config_existing_serveralias {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -736,6 +738,7 @@ EOC
         SSL_ca_file => $ca_file,
         SSL_hostname => $host,
         SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
+        SSL_verifycn_name => 'server-cert',
       };
 
       if ($ENV{TEST_VERBOSE}) {
@@ -788,8 +791,8 @@ sub autohost_sni_config_ok_with_host {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -878,6 +881,7 @@ EOC
         SSL_ca_file => $ca_file,
         SSL_hostname => $host,
         SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
+        SSL_verifycn_name => 'server-cert',
       };
 
       if ($ENV{TEST_VERBOSE}) {

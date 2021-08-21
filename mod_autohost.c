@@ -208,7 +208,8 @@ static int autohost_parse_config(conn_t *conn, const char *path) {
   ipbind = pr_ipbind_find(conn->local_addr, conn->local_port, TRUE);
 
   /* Now that we have a valid server_rec, we need to bind it to
-   * the address to which the client connected.
+   * the address to which the client connected.  And yes, we _do_ want
+   * to do this regardless of whether `ipbind` is NULL or not.
    */
   process_serveralias(s, ipbind);
 
