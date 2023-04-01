@@ -375,7 +375,7 @@ static void autohost_connect_ev(const void *event_data, void *user_data) {
   const char *path;
   struct stat st;
   conn_t *conn = (conn_t *) event_data;
- 
+
   if (autohost_engine == FALSE) {
     return;
   }
