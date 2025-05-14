@@ -21,8 +21,8 @@ jobs:
           - gcc
         container:
           - almalinux:8
-          - alpine:3.15
-          - ubuntu:18.04
+          - alpine:3.18
+          - ubuntu:22.04
 
     container: ${{ matrix.container }}
 
@@ -39,7 +39,7 @@ jobs:
           path: proftpd-mod_autohost
 
       - name: Whitespace check
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           apt-get update -qq
           apt-get install -y git
@@ -56,11 +56,11 @@ jobs:
           cp proftpd-mod_autohost/mod_autohost.c proftpd/contrib/
 
       - name: Install Alpine packages
-        if: ${{ matrix.container == 'alpine:3.15' }}
+        if: ${{ matrix.container == 'alpine:3.18' }}
         run: |
           apk update
           # for builds
-          apk add bash build-base clang compiler-rt-static gcc make zlib-dev
+          apk add bash build-base clang compiler-rt gcc make zlib-dev
           # for unit tests
           apk add check check-dev subunit subunit-dev
 
@@ -91,7 +91,7 @@ jobs:
           openssl version -a
 
       - name: Install Ubuntu packages
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           apt-get update -qq
           # for builds
@@ -132,7 +132,7 @@ jobs:
           openssl version -a
 
       - name: Prepare code coverage
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           lcov --directory proftpd --zerocounters
 
@@ -150,7 +150,7 @@ jobs:
           make install
 
       - name: Run integration tests
-        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:22.04' }}
         env:
           PROFTPD_TEST_BIN: /usr/local/sbin/proftpd
           PROFTPD_TEST_DIR: ${{ github.workspace }}/proftpd
