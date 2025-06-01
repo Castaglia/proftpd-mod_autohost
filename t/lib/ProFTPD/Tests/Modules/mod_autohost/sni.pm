@@ -337,7 +337,6 @@ EOC
       # so that existing configurations that lack ServerAlias do not break
       # unexpectedly.
       my $client = Net::FTPSSL->new('127.0.0.1', $ssl_opts);
-      my $client = Net::FTPSSL->new('127.0.0.1', $ssl_opts);
       $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
