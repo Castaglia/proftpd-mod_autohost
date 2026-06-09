@@ -74,6 +74,7 @@ sub autohost_config {
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
@@ -165,6 +166,7 @@ sub autohost_config_ipv6 {
 ServerName "AutoHost IPv6 Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
@@ -351,6 +353,7 @@ EOC
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 RequireValidShell off
 ServerLog $setup->{log_file}
 EOC
@@ -458,6 +461,7 @@ EOC
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 ExtendedLog $ext_log ALL custom
@@ -598,6 +602,7 @@ EOC
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
@@ -722,6 +727,7 @@ EOC
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 RequireValidShell off
 ServerLog $setup->{log_file}
 EOC
