@@ -92,8 +92,8 @@ sub autohost_sni_config_ok {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -103,6 +103,7 @@ ServerAlias $host
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 
@@ -235,8 +236,8 @@ sub autohost_sni_config_missing {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-foo.conf");
@@ -246,6 +247,7 @@ ServerAlias $host
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 
@@ -371,8 +373,8 @@ sub autohost_sni_config_no_serveralias {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -381,6 +383,7 @@ sub autohost_sni_config_no_serveralias {
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 
@@ -507,8 +510,8 @@ sub autohost_sni_config_mismatched_serveralias {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -518,6 +521,7 @@ ServerAlias ftp.example.com
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 
@@ -645,8 +649,8 @@ sub autohost_sni_config_existing_serveralias {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -656,6 +660,7 @@ ServerAlias $host
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 
@@ -790,8 +795,8 @@ sub autohost_sni_config_ok_with_host {
 
   my $host = 'castaglia';
 
-  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/server-cert.pem");
-  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_tls/ca-cert.pem");
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   mkpath("$tmpdir/conf.d");
   my $auto_config = File::Spec->rel2abs("$tmpdir/conf.d/127.0.0.1-$host.conf");
@@ -801,6 +806,7 @@ ServerAlias $host
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 

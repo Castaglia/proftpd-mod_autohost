@@ -70,6 +70,7 @@ ServerAlias $host
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
@@ -173,6 +174,7 @@ ServerAlias $host
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
@@ -270,6 +272,7 @@ sub autohost_host_config_no_serveralias {
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
@@ -368,6 +371,7 @@ ServerAlias ftp.example.com
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
@@ -466,6 +470,7 @@ ServerAlias $host
 ServerName "AutoHost Server"
 AuthUserFile $setup->{auth_user_file}
 AuthGroupFile $setup->{auth_group_file}
+AuthOrder mod_auth_file.c
 ServerLog $setup->{log_file}
 RequireValidShell off
 EOC
